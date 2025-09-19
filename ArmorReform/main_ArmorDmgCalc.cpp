@@ -194,8 +194,13 @@ namespace ArmorReformula {
 	}
 
 	void PrintActorHitData(ActorHitData* _hData)  {
-		__WriteLog2(true," hitLocation: %d, healthDmg: %.2f, armorDmg: %.2f,dmgMult: %.2f,projectileHitDmg: %.2f",
-			_hData->hitLocation, _hData->healthDmg, _hData->armorDmg, _hData->dmgMult, _hData->projectile->hitDamage);
+		__WriteLog2(true," hitLocation: %d, healthDmg: %.2f, armorDmg: %.2f,dmgMult: %.2f,wpnDmg: %.2f",
+			_hData->hitLocation, _hData->healthDmg, _hData->armorDmg, _hData->dmgMult, _hData->wpnBaseDmg);
+
+		if (_hData->projectile)
+		{
+			__WriteLog2(true,"projectile damage: %.2f",_hData->projectile->hitDamage)
+		}
 	}
 
 	static void __fastcall Actor_OnHitMatter_Debug(Actor* _target, void* _edx, ActorHitData* _hitData, bool _unkFlag) {
@@ -213,21 +218,36 @@ namespace ArmorReformula {
 			return;
 		}
 		__WriteLog2(true, "Weap Type %u", _weap->eWeaponType);
-		auto* _proj = _hitData->projectile;
-		if (!_hitData || !_proj || !_hitData->source || IS_TYPE(_proj,Explosion) || _hitData->hitLocation == -1) {
-			__WriteLog2(true, "HitData Or Projectile, Damage Source Is Null");
+
+		bool isMelee = WeapIsMelee(_weap, false);
+
+
+		if (!_hitData  || !_hitData->source  || _hitData->hitLocation == -1) {
+			__WriteLog2(true, "HitData Or Damage Source Is Null");
 			ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
 			return;
 		}
 		
+		if (!isMelee)
+		{
+			auto* _proj = _hitData->projectile;
+			if (!_proj || IS_TYPE(_proj, Explosion)) {
+				__WriteLog2(true, "Not Melee Hit But Projectile Is Null, Or It is a Explosion Hit");
+				ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
+				return;
+			}
+			auto* _impData = _proj->GetImpactDataAlt();
+			if (!_impData) {
+				__WriteLog2(true, "projectile impact data Is Null");
+				ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
+				return;
+			}
+
+		}
+
 
 		PrintActorHitData(_hitData);
-		auto* _impData = _hitData->projectile->GetImpactDataAlt();
-		if (!_impData) {
-			__WriteLog2(true, "proj impact data Is Nullptr");
-			ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
-			return;
-		}
+		
 
 		bool targetIsPlayer = (_target == PlayerCharacter::GetSingleton());
 
@@ -239,9 +259,8 @@ namespace ArmorReformula {
 		}
 		
 		
-		bool isMeleeHit = WeapIsMelee(_weap, true);
 		
-		NewArmorDamageCalculation(_hitData, _target, WeapIsMelee(_weap, true), (_target == PlayerCharacter::GetSingleton()), _hitData->hitLocation, IsDebugMode());
+		NewArmorDamageCalculation(_hitData, _target, isMelee, (_target == PlayerCharacter::GetSingleton()), _hitData->hitLocation, IsDebugMode());
 		
 		ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
 		
@@ -255,29 +274,40 @@ namespace ArmorReformula {
 			return;
 		}
 
-		auto* _proj = _hitData->projectile;
-		if (!_hitData || !_proj || !_hitData->source || IS_TYPE(_proj, Explosion) || _hitData->hitLocation == -1) {
-			ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
-			return;
-		}
-
 		TESObjectWEAP* _weap = _hitData->weapon;
 		if (!_weap) {
 			ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
 			return;
 		}
+		bool isMelee = WeapIsMelee(_weap, false);
 
-		auto* _impData = _hitData->projectile->GetImpactDataAlt();
-		if (!_impData) {
+		
+		if (!_hitData || !_hitData->source  || _hitData->hitLocation == -1) {
 			ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
 			return;
 		}
 
-		NewArmorDamageCalculation(_hitData, _target, WeapIsMelee(_weap, true), 
+		if (!isMelee)
+		{
+			auto* _proj = _hitData->projectile;
+			if (!_proj  || IS_TYPE(_proj, Explosion)) {
+				ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
+				return;
+			}
+			auto* _impData = _proj->GetImpactDataAlt();
+			if (!_impData) {
+				ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
+				return;
+			}
+		}
+		
+		NewArmorDamageCalculation(_hitData, _target, isMelee,
 									(_target == PlayerCharacter::GetSingleton()), _hitData->hitLocation);
 
 		ThisStdCall(_actor_OnHitMatter.GetOverwrittenAddr(), _target, _hitData, _unkFlag);	
 	}
+
+
 	//Actor_OnHitMatter_Explosion_Debug
 	static void __fastcall Actor_OnHitMatter_Explosion(Actor* _target, void* _edx, ActorHitData* _hitData, bool _unkFlag) {
 		if (!_target || !IS_ACTOR(_target)) {
@@ -305,7 +335,7 @@ namespace ArmorReformula {
 			return;
 		}
 
-		NewArmorDamageCalculation(_hitData, _target, WeapIsMelee(_weap, true),
+		NewArmorDamageCalculation(_hitData, _target, WeapIsMelee(_weap, false),
 			(_target == PlayerCharacter::GetSingleton()), _hitData->hitLocation);
 
 		ThisStdCall(_actor_OnHitMatter_Explosion.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
@@ -349,7 +379,7 @@ namespace ArmorReformula {
 			__WriteLog2(true, ">>> Target Is %s", _target->GetEditorID());
 		}
 
-		NewArmorDamageCalculation(_hitData, _target, WeapIsMelee(_weap, true),
+		NewArmorDamageCalculation(_hitData, _target, WeapIsMelee(_weap, false),
 			targetIsPlayer, _hitData->hitLocation,IsDebugMode());
 
 		ThisStdCall(_actor_OnHitMatter_Explosion.GetOverwrittenAddr(), _target, _hitData, _unkFlag);
